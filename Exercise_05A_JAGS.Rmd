@@ -290,15 +290,12 @@ Run the unknown mean/fixed variance model to estimate mean tree diameter. Includ
 * Length of your MCMC (i.e. the total number of “updates”), the number of chains, the burnin values you used, the effective sample size, and any graphs/statistics/rationale you used to justify those settings
 
 ```{r}
-# Initial conditions 
-X_bar = mean(data$X)
-X_sd = sd(data$X)
-
+set.seed(42)
 # Initial values for mu
-inits <- list() 
-inits[[1]] <- list(mu = X_bar - X_sd)
-inits[[2]] <- list(mu = X_bar)
-inits[[3]] <- list(mu = X_bar + X_sd)
+inits_task1 <- list() 
+inits_task1[[1]] <- list(mu = 15)
+inits_task1[[2]] <- list(mu = 20)
+inits_task1[[3]] <- list(mu = 25)
 
 # MCMC parameters
 chains = 3
@@ -307,30 +304,22 @@ iterations = 1000
 # Establish model
 diam_mod1 <- jags.model(file = textConnection(NormalMeanN), 
                         data = data, 
-                        inits = inits, 
+                        inits = inits_task1, 
                         n.chains = chains)
 
 # Sample posterior
 # with 1000 samples
 samps_mod1_1k <- coda.samples(model = diam_mod1, 
                       variable.names = c("mu"), 
-                      n.iter = 1000)
+                      n.iter = iterations)
 
+# Trace and density plots
 plot(samps_mod1_1k)
 
-# with 5000 samples
-samps_mod1_5k <- coda.samples(model = diam_mod1, 
-                      variable.names = c("mu"), 
-                      n.iter = 5000)
-
-plot(samps_mod1_5k)
-
 gelman.diag(samps_mod1_1k)
-gelman.diag(samps_mod1_5k)
 
 # When did it converge? 
 GBR_1k <- gelman.plot(samps_mod1_1k)
-GBR_5k <- gelman.plot(samps_mod1_5k)
 
 # First iteration after convergence 
 burnin <- GBR_1k$last.iter[tail(which(GBR_1k$shrink[,,2] > 1.1),1)+1]
@@ -340,6 +329,7 @@ if (length(burnin) == 0) burnin = 1
 
 # Post-burn-in diagnostics
 mod1_post_burnin <- window(samps_mod1_1k, start=burnin)
+mod1_results <- c(mod1_post_burnin[[1]], mod1_post_burnin[[2]], mod1_post_burnin[[3]]) # samples from all chains
 summary(mod1_post_burnin)
 gelman.diag(mod1_post_burnin)
 plot(mod1_post_burnin)
@@ -350,20 +340,40 @@ acfplot(mod1_post_burnin)
 # Effective sample size
 effectiveSize(mod1_post_burnin)
 
-## plot the evolution of sample quantiles as a funcion of number of iterations
-cumuplot(jags.burn,probs=c(0.025,0.25,0.5,0.75,0.975))
+# Plot evolution of sample quantiles as a function of number of iterations
+cumuplot(mod1_post_burnin, probs=c(0.025,0.25,0.5,0.75,0.975))
 
 # Summary stats
-summary(mod1_post_burnin[,,2])
+summary(mod1_post_burnin)
 ```
 
 Posterior estimate of the mean: 
-Mean diameter of 16.57 with a SD of 0.3 and time-series SE of 0.005. The model converged, as the parameter density and MCMC "history" plots show overlapping chains that remain consistent throughout the iterations, with random deviations that are approximately normally distributed about the mean. 
+Mean diameter of 16.56 with a SD of 0.3 and time-series SE of 0.005. The model converged, as the parameter density and MCMC "history" plots show overlapping chains that remain consistent throughout the iterations, with random deviations that are approximately normally distributed about the mean. 
 
-This approach used 3 chains and a burn-in value of 1,000. The ESS was 3157. The model converged after very few iterations. This is reflected in the plots of the MCMC "history"; convergence is achieved when the chains are comparable and practically indistinguishable. Because of this, the model did not need more iterations. 
+This approach used 3 chains and a burn-in value of 1,000. The ESS was 3000. The model converged after very few iterations. This is reflected in the plots of the MCMC "history"; convergence is achieved when the chains are comparable and practically indistinguishable. Because of this, the model did not need more iterations. Didn't thin the model for this.
 
 ### Activity Task 2
 Modify the model to account for the uncertainty in the variance. This only requires adding one line — a prior on S outside the loop.
+
+```{r}
+NormalMeanN_uncert <- "
+model {
+  mu ~ dnorm(mu0,T) # prior on the mean 
+  S ~ dnorm(1/25, 1/15) # prior on the variance
+  for(i in 1:N){
+    X[i] ~ dnorm(mu,S) # data model
+  }
+}
+"
+
+# Removed S
+data_task2 = list(
+  N = 297,
+  mu0=20,
+  T=0.01, 
+  X = c(20.9, 13.6, 15.7, 6.3, 2.7, 25.6, 4, 20.9, 7.8, 27.1, 25.2, 19, 17.8, 22.8, 12.5, 21.1, 22, 22.4, 5.1, 16, 20.7, 15.7, 5.5, 18.9, 22.9, 15.5, 18.6, 19.3, 14.2, 12.3, 11.8, 26.8, 17, 5.7, 12, 19.8, 19, 23.6, 19.9, 8.4, 22, 18.1, 21.6, 17, 12.4, 2.9, 22.6, 20.8, 18.2, 14.2, 17.3, 14.5, 8.6, 9.1, 2.6, 19.8, 20, 22.2, 10.2, 12.9, 20.9, 21.1, 7.3, 5.8, 23.1, 17, 21.5, 10.1, 18.4, 22.6, 21.2, 21.5, 22.4, 17.3, 16, 25, 22.4, 23.9, 23, 21.9, 19, 28.6, 16, 22.5, 23.2, 8.7, 23.4, 15.3, 25.6, 19.2, 17.4, 23.8, 20.4, 19, 3.6, 23.4, 19.6, 17.5, 16.5, 22, 19.7, 7.35, 18, 17.8, 9.6, 15, 12, 17.7, 21.4, 17, 22.1, 18.9, 15.05, 12.9, 19.3, 15.3, 13.6, 15.4, 10.6, 11.3, 11.8, 22.2, 22.2, 13.1, 7.4, 4.5, 11.7, 19.5, 19.9, 11.6, 13.9, 15.5, 11, 18.6, 17.6, 12.7, 20.9, 18.8, 22.4, 21.2, 18.2, 15.3, 13.6, 7.3, 17.4, 17.4, 10.5, 22.9, 23.2, 13.8, 14.8, 22.2, 20.9, 13, 18.9, 19, 15.2, 16.8, 18, 24.6, 15.4, 17.2, 23.2, 22.8, 25.5, 7.8, 6, 6.4, 19, 13.5, 23.7, 18, 22.2, 22.4, 9.3, 13.7, 18.9, 20.5, 23.3, 20.8, 18.4, 4.5, 12.2, 16.9, 13.5, 17.8, 16.9, 20.4, 19.5, 22.2, 24.5, 21.2, 16.5, 18, 16.4, 3.9, 17.9, 22, 12.9, 21, 18, 9.2, 15.9, 8.1, 8.3, 10.7, 12, 19.9, 13.6, 17.3, 11.5, 12.4, 15.1, 22, 19.3, 17.5, 14.5, 14.7, 17.5, 19.6, 12.9, 20.3, 17.9, 20.2, 18.3, 9.5, 19, 21, 13.1, 20.4, 16.3, 18.3, 11.8, 23.3, 15.2, 20, 17.9, 12, 19.6, 18.5, 16.2, 10.9, 17.8, 13.8, 10, 17.9, 15.6, 20.3, 14.9, 18.6, 12.5, 18.2, 16, 18.7, 18, 15.3, 19, 17.9, 15.8, 17.7, 14.4, 19.6, 18.3, 18.7, 17.8, 18, 10.1, 18.8, 16.4, 21.2, 16.6, 16.7, 17.8, 16.5, 19.3, 16.3, 14.2, 13, 9.4, 19.7, 13.4, 2.6, 17.6, 16.7, 17.6, 5.8, 17.6, 20.1, 18.2, 16.7, 14, 13.9, 5.1, 16.6, 3.9, 17.5, 18)
+  )
+```
 
 Run the unknown mean/unknown variance model to simultaneously estimate both the mean tree diameter and the standard deviation. Include the following in your results:
 
@@ -375,7 +385,57 @@ Run the unknown mean/unknown variance model to simultaneously estimate both the 
 * Also describe any changes in the distribution of the mean (shape, location, tails) compared to Task 1.
   
 ```{r}
+# Initial values for mu and S
+inits_task2 <- list() 
+inits_task2[[1]] <- list(mu = 15, S = 1/10)
+inits_task2[[2]] <- list(mu = 20, S = 1/30)
+inits_task2[[3]] <- list(mu = 25, S = 1/50)
 
+# MCMC parameters
+chains_2 = 3
+iterations_2 = 5000
+
+# Establish model
+diam_mod2 <- jags.model(file = textConnection(NormalMeanN_uncert), 
+                        data = data_task2, 
+                        inits = inits_task2, 
+                        n.chains = chains_2)
+
+# Sample posterior
+samps_mod2_5k <- coda.samples(model = diam_mod2, 
+                      variable.names = c("mu", "S"), 
+                      n.iter = iterations_2)
+
+plot(samps_mod2_5k)
+
+gelman.diag(samps_mod2_5k)
+
+# First iteration after convergence 
+GBR_2_5k <- gelman.plot(samps_mod2_5k)
+
+burnin_mod2 <- GBR_2_5k$last.iter[max(tail(which(GBR_2_5k$shrink[,1,2] > 1.1), 1))+1]
+# What if no burn-in? 
+if (length(burnin_mod2) == 1 & is.na(burnin_mod2[1])) burnin_mod2 = 1
+
+
+# Post-burn-in diagnostics
+mod2_post_burnin <- window(samps_mod2_5k, start=burnin_mod2)
+mod2_results <- c(mod2_post_burnin[[1]], mod2_post_burnin[[2]], mod2_post_burnin[[3]]) # samples from all chains
+summary(mod2_post_burnin)
+gelman.diag(mod2_post_burnin)
+plot(mod2_post_burnin)
+
+# Autocorrelation plot 
+acfplot(mod2_post_burnin)
+
+# Effective sample size
+effectiveSize(mod2_post_burnin)
+
+# Plot evolution of sample quantiles as a function of number of iterations
+cumuplot(mod2_post_burnin,probs=c(0.025,0.25,0.5,0.75,0.975))
+
+# Summary stats
+summary(mod2_post_burnin[,,2])
 ```
 
-
+< will update with written answers for Task 2 > 
