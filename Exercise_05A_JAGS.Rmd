@@ -359,7 +359,8 @@ Modify the model to account for the uncertainty in the variance. This only requi
 NormalMeanN_uncert <- "
 model {
   mu ~ dnorm(mu0,T) # prior on the mean 
-  S ~ dnorm(1/25, 1/15) # prior on the variance
+  S ~ dunif(1/100,1)
+  # S ~ dnorm(1/25, 1/15) # prior on the variance
   for(i in 1:N){
     X[i] ~ dnorm(mu,S) # data model
   }
